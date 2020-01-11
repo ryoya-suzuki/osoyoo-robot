@@ -1,0 +1,31 @@
+--- python/native/cpuinfo.c	2012-10-29 06:26:10.000000000 +0900
++++ python/native/cpuinfo.c	2015-06-26 16:10:24.893330537 +0900
+@@ -39,6 +39,10 @@
+       sscanf(buffer, "Hardware	: %s", hardware);
+       if (strcmp(hardware, "BCM2708") == 0)
+          rpi_found = 1;
++      else if (strcmp(hardware, "BCM2709") == 0)
++         rpi_found = 1;
++      else if (strcmp(hardware, "BCM2835") == 0)
++         rpi_found = 1;
+       sscanf(buffer, "Revision	: %s", revision);
+    }
+    fclose(fp);
+@@ -60,6 +64,16 @@
+        (strcmp(revision, "0003") == 0) ||
+        (strcmp(revision, "1000003") == 0 ))
+       return 1;
+-   else // assume rev 2 (0004 0005 0006 1000004 1000005 1000006)
++   else if ((strcmp(revision, "0004") == 0) ||
++            (strcmp(revision, "1000004") == 0 ) ||
++            (strcmp(revision, "0005") == 0) ||
++            (strcmp(revision, "1000005") == 0 ) ||
++            (strcmp(revision, "0006") == 0) ||
++            (strcmp(revision, "1000006") == 0 ))
+       return 2;
++   else if ((strcmp(revision, "a01041") == 0) ||
++            (strcmp(revision, "a21041") == 0 ))
++      return 3;
++   else // assume rev 4
++      return 4;
+ }

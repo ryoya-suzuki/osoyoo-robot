@@ -1,0 +1,30 @@
+--- python/webiopi/protocols/http.py	2014-02-22 07:31:18.000000000 +0900
++++ python/webiopi/protocols/http.py	2017-08-18 16:53:56.000000000 +0900
+@@ -194,13 +194,23 @@
+         
+         (contentType, encoding) = mime.guess_type(path)
+         f = codecs.open(path, encoding=encoding)
+-        data = f.read()
++        try:
++            data = f.read()
++        except UnicodeDecodeError:
++            f.close()
++            f = codecs.open(path, mode='rb', encoding=encoding)
++            data = f.read()
+         f.close()
+         self.send_response(200)
+         self.send_header("Content-Type", contentType);
+-        self.send_header("Content-Length", os.path.getsize(realPath))
+-        self.end_headers()
+-        self.wfile.write(data)
++        try:
++            self.send_header("Content-Length", len(data.encode()))
++            self.end_headers()
++            self.wfile.write(data.encode())
++        except AttributeError:
++            self.send_header("Content-Length", os.path.getsize(realPath))
++            self.end_headers()
++            self.wfile.write(data)
+         self.logRequest(200)
+         
+     def processRequest(self):
