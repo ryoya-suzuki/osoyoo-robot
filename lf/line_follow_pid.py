@@ -23,6 +23,11 @@ rright = 26
 high_speed=3000
 mid_speed=1800
 low_speed=1200
+r_speed=0
+l_speed=0
+max_speed=2500
+min_speed=1000
+pwm_move = 4095
 # Initialise the PCA9685 using the default address (0x40).
 pwm = osoyoo_PCA9685.PCA9685()
 # Set frequency to 60hz.
@@ -45,6 +50,8 @@ counter_sensor = 0
 #Initial time
 time_start = time.time()
 time_elapsed = 0
+#Parameter for pid
+k_p = 10
 
 # Read tracking senbsors's data
 def read_sensors():
@@ -62,33 +69,33 @@ def set_speed(lspeed,rspeed):
 
 #Robot car forward
 def go_forward():
-    pwm.set_pwm(in1,0,4095)   #IN1
+    pwm.set_pwm(in1,0,pwm_move)   #IN1
     pwm.set_pwm(in2,0,0)      #IN2
     
-    pwm.set_pwm(in3,0,4095)   #IN3
+    pwm.set_pwm(in3,0,pwm_move)   #IN3
     pwm.set_pwm(in4,0,0)      #IN4
 #Robot car backwards
 def go_back():
     pwm.set_pwm(in1,0,0)      #IN1
-    pwm.set_pwm(in2,0,4095)   #IN2
+    pwm.set_pwm(in2,0,pwm_move)   #IN2
     
     pwm.set_pwm(in3,0,0)      #IN3
-    pwm.set_pwm(in4,0,4095)   #IN4
+    pwm.set_pwm(in4,0,pwm_move)   #IN4
 
 #Robot car turn left
 def turn_left():
-    pwm.set_pwm(in1,0,4095)   #IN1
+    pwm.set_pwm(in1,0,pwm_move)   #IN1
     pwm.set_pwm(in2,0,0)      #IN2
     
     pwm.set_pwm(in3,0,0)      #IN3
-    pwm.set_pwm(in4,0,4095)   #IN4
+    pwm.set_pwm(in4,0,pwm_move)   #IN4
 
 #Robot turn right
 def turn_right():
     pwm.set_pwm(in1,0,0)      #IN1
-    pwm.set_pwm(in2,0,4095)   #IN2
+    pwm.set_pwm(in2,0,pwm_move)   #IN2
     
-    pwm.set_pwm(in3,0,4095)   #IN3
+    pwm.set_pwm(in3,0,pwm_move)   #IN3
     pwm.set_pwm(in4,0,0)      #IN4
 
 #Robot stop move
@@ -109,6 +116,13 @@ def get_error_line():
     if(counter_sensor==0):
         error_line = 0
 	
+def set_speed_error(error_line):
+    abs_error = abs(error_line)
+    vel = max_speed - abs_error/W_LINE[4]*(max_speed-min_speed)
+    vel = int(vel)
+    print('vel: ',vel)
+    set_speed(vel,vel)
+
 #Robot car moves along the black line
 def tracking():
     while True:
@@ -144,6 +158,42 @@ def tracking():
         if(lf=='11111'):
             stop()
 
+#Robot car moves along the black line with variable speed
+def tracking_speed():
+    while True:
+        read_sensors()
+        set_speed(0,0)
+        get_error_line()
+        lf=str(lf1)+str(lf2)+str(lf3)+str(lf4)+str(lf5)
+        time_elapsed = time_start - time.time()
+        print(error_line)
+        time_elapsed = math.floor(time_elapsed*1000000)/1000000 #[usec]
+        csvlist.append(str(time_elapsed)+','+str(lf1)+','+str(lf2)+','+str(lf3)+','+str(lf4)+','+str(lf5)+','+str(error_line))
+        if(lf=='00100' or lf=='01110' or lf=='01010' or lf=='00000'):
+            set_speed_error(error_line)
+            go_forward()
+            continue            
+        if(lf=='00010' or lf=='00110'  or lf=='00101'):
+            set_speed_error(error_line)
+            turn_right()
+            continue
+        if(lf=='00001' or lf=='00111' or lf=='00011'):
+            set_speed_error(error_line)
+            turn_right()
+            continue
+   
+        if(lf=='01000' or lf=='01100'  or lf=='10100'):
+       	    set_speed_error(error_line)
+            turn_left()
+            continue
+        if(lf=='10000' or lf=='11100' or lf=='11000'): 
+            set_speed_error(error_line)
+            turn_left()
+            continue
+        if(lf=='11111'):
+            stop()
+
+
 #Robot car moves along the black line by pid control
 def tracking_pid():
     while True:
@@ -169,7 +219,7 @@ if __name__ == '__main__':
         csvlist.append('time[usec],lf1,lf2,lf3,lf4,lf5,error')
         time_start = time.time()
     #start to line follow 
-        tracking()
+        tracking_speed()
     except KeyboardInterrupt:
 	#robot car stop
         destroy()
