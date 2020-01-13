@@ -26,7 +26,7 @@ low_speed=1200
 r_speed=0
 l_speed=0
 max_speed=2500
-min_speed=1000
+min_speed=1200
 pwm_move = 4095
 # Initialise the PCA9685 using the default address (0x40).
 pwm = osoyoo_PCA9685.PCA9685()
@@ -51,7 +51,14 @@ counter_sensor = 0
 time_start = time.time()
 time_elapsed = 0
 #Parameter for pid
-k_p = 10
+k_p = 80
+#Side flag
+f_left=0
+f_right=1
+#PWM? constrain
+pwm_def = 2000
+pwm_max = 4095
+pwm_min = 0
 
 # Read tracking senbsors's data
 def read_sensors():
@@ -115,6 +122,11 @@ def get_error_line():
 	    error_line /= counter_sensor
     if(counter_sensor==0):
         error_line = 0
+
+def constrain_limit(val, min_val, max_val):
+    if(val < min_val): return min_val
+    if(val > max_val): return max_val
+    return(val)
 	
 def set_speed_error(error_line):
     abs_error = abs(error_line)
@@ -193,6 +205,19 @@ def tracking_speed():
         if(lf=='11111'):
             stop()
 
+def calc_pid(error_line, f_side):
+    if(f_side==f_left):
+        error_line = -error_line
+        p=k_p*error_line
+        #i=k_i*
+        #d=k_d*
+    if(f_side==f_right):
+        p=k_p*error_line
+        #i=k_i*
+        #d=k_d*
+    val_pid = p
+    val_pid = int(pwm_def + val_pid)
+    return(constrain_limit(val_pid, pwm_min, pwm_max))
 
 #Robot car moves along the black line by pid control
 def tracking_pid():
@@ -204,9 +229,16 @@ def tracking_pid():
         csvlist.append(str(time_elapsed)+','+str(lf1)+','+str(lf2)+','+str(lf3)+','+str(lf4)+','+str(lf5)+','+str(error_line))
         print(error_line)
 
-        #if(counter_sensor > 0):
-            
-        if(counter_sensor==0):
+        if(counter_sensor > 0):
+            set_speed_error(error_line)
+            val_left = calc_pid(error_line,f_left)
+            val_right = calc_pid(error_line,f_right)
+            print('left:'+str(val_left)+'right'+str(val_right))
+            pwm.set_pwm(in1,0,val_left)   #IN1
+            pwm.set_pwm(in2,0,0)          #IN2
+            pwm.set_pwm(in3,0,val_right)   #IN3
+            pwm.set_pwm(in4,0,0)          #IN4
+        if(counter_sensor==0 or counter_sensor==5):
             stop()
             
 if __name__ == '__main__':
@@ -219,7 +251,7 @@ if __name__ == '__main__':
         csvlist.append('time[usec],lf1,lf2,lf3,lf4,lf5,error')
         time_start = time.time()
     #start to line follow 
-        tracking_speed()
+        tracking_pid()
     except KeyboardInterrupt:
 	#robot car stop
         destroy()
