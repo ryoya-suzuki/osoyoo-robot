@@ -46,12 +46,19 @@ dt_now = datetime.datetime.now()
 W_LINE = [-36, -17, 0, 17, 36]
 #error line pos
 error_line = 0
+error_line_pre = 0
+limit_i = 3000
 counter_sensor = 0
 #Initial time
 time_start = time.time()
 time_elapsed = 0
 #Parameter for pid
-k_p = 80
+pid_r = [0, 0, 0] #[p, i, d]
+pid_l = [0, 0, 0]
+k_p = 100
+k_i = 5
+k_d = 5
+sampling_time = 0.008 #[sec]
 #Side flag
 f_left=0
 f_right=1
@@ -121,7 +128,7 @@ def get_error_line():
     if(counter_sensor!=0):
 	    error_line /= counter_sensor
     if(counter_sensor==0):
-        error_line = 0
+        error_line = error_line_pre
 
 def constrain_limit(val, min_val, max_val):
     if(val < min_val): return min_val
@@ -144,7 +151,7 @@ def tracking():
         lf=str(lf1)+str(lf2)+str(lf3)+str(lf4)+str(lf5)
         time_elapsed = time_start - time.time()
         print(error_line)
-        time_elapsed = math.floor(time_elapsed*1000000)/1000000 #[usec]
+        time_elapsed = math.floor(time_elapsed*1000000)/1000000 #[sec]
         csvlist.append(str(time_elapsed)+','+str(lf1)+','+str(lf2)+','+str(lf3)+','+str(lf4)+','+str(lf5)+','+str(error_line))
         if(lf=='00100' or lf=='01110' or lf=='01010' or lf=='00000'):
             set_speed(high_speed,high_speed)
@@ -179,7 +186,7 @@ def tracking_speed():
         lf=str(lf1)+str(lf2)+str(lf3)+str(lf4)+str(lf5)
         time_elapsed = time_start - time.time()
         print(error_line)
-        time_elapsed = math.floor(time_elapsed*1000000)/1000000 #[usec]
+        time_elapsed = math.floor(time_elapsed*1000000)/1000000 #[sec]
         csvlist.append(str(time_elapsed)+','+str(lf1)+','+str(lf2)+','+str(lf3)+','+str(lf4)+','+str(lf5)+','+str(error_line))
         if(lf=='00100' or lf=='01110' or lf=='01010' or lf=='00000'):
             set_speed_error(error_line)
@@ -205,41 +212,57 @@ def tracking_speed():
         if(lf=='11111'):
             stop()
 
-def calc_pid(error_line, f_side):
-    if(f_side==f_left):
-        error_line = -error_line
-        p=k_p*error_line
-        #i=k_i*
-        #d=k_d*
-    if(f_side==f_right):
-        p=k_p*error_line
-        #i=k_i*
-        #d=k_d*
-    val_pid = p
-    val_pid = int(pwm_def + val_pid)
-    return(constrain_limit(val_pid, pwm_min, pwm_max))
+def calc_pid_l(error,error_pre):
+    global pid_l
+    error = -error
+    error_pre = -error_pre
+    pid_l[0]=error
+    pid_l[1]+= error*sampling_time
+    constrain_limit(pid_l[1], -limit_i, limit_i)
+    pid_l[2]=(error - error_pre)/sampling_time
+
+    val = k_p*pid_l[0] + k_i*pid_l[1] + k_d*pid_l[2]
+    val = int(pwm_def + val)
+    return(constrain_limit(val, pwm_min, pwm_max))
+
+def calc_pid_r(error,error_pre):
+    global pid_r
+    pid_r[0]=error
+    pid_r[1]+= error*sampling_time
+    constrain_limit(pid_r[1], -limit_i, limit_i)
+    pid_r[2]=(error - error_pre)/sampling_time
+
+    val = k_p*pid_r[0] + k_i*pid_r[1] + k_d*pid_r[2]
+    val = int(pwm_def + val)
+    return(constrain_limit(val, pwm_min, pwm_max))
 
 #Robot car moves along the black line by pid control
 def tracking_pid():
+    global error_line,error_line_pre
     while True:
         read_sensors()
         get_error_line()
-        time_elapsed = time_start - time.time()
-        time_elapsed = math.floor(time_elapsed*1000000)/1000000 #[usec]
+        time_elapsed = time.time() - time_start
+        time_elapsed = math.floor(time_elapsed*1000000)/1000000 #[sec]
         csvlist.append(str(time_elapsed)+','+str(lf1)+','+str(lf2)+','+str(lf3)+','+str(lf4)+','+str(lf5)+','+str(error_line))
+        print(str(lf1)+','+str(lf2)+','+str(lf3)+','+str(lf4)+','+str(lf5)+','+str(error_line))
         print(error_line)
 
         if(counter_sensor > 0):
             set_speed_error(error_line)
-            val_left = calc_pid(error_line,f_left)
-            val_right = calc_pid(error_line,f_right)
-            print('left:'+str(val_left)+'right'+str(val_right))
+            val_left = calc_pid_l(error_line,error_line_pre)
+            val_right = calc_pid_r(error_line,error_line_pre)
+            error_line_pre = error_line
+
             pwm.set_pwm(in1,0,val_left)   #IN1
             pwm.set_pwm(in2,0,0)          #IN2
             pwm.set_pwm(in3,0,val_right)   #IN3
             pwm.set_pwm(in4,0,0)          #IN4
-        if(counter_sensor==0 or counter_sensor==5):
+            continue
+        if(pid_l[1]==0 and pid_r[1]==0):
+            error_line_pre = error_line
             stop()
+            continue
             
 if __name__ == '__main__':
     try:
@@ -248,7 +271,7 @@ if __name__ == '__main__':
         f = open(log_name, 'w')
         writer = csv.writer(f,delimiter='\n')
         csvlist = []
-        csvlist.append('time[usec],lf1,lf2,lf3,lf4,lf5,error')
+        csvlist.append('time[sec],lf1,lf2,lf3,lf4,lf5,error')
         time_start = time.time()
     #start to line follow 
         tracking_pid()
